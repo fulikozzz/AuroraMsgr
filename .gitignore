@@ -32,3 +32,4 @@ go.work.sum
 # .vscode/
 /.vs
 /logs
+/aurora.db
