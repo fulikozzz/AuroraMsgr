@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
 	"github.com/fulikozzz/AuroraMsgr/internal/auth"
+	"github.com/fulikozzz/AuroraMsgr/internal/logger"
 )
 
 // Конфигурация сервера
@@ -17,34 +17,42 @@ const  (
 
 type Server struct {
 	authManager *auth.Manager
+	log			*logger.Logger
 }
 
-func NewServer() *Server {
+func NewServer(log *logger.Logger) *Server {
 	return &Server{
-		authManager: auth.NewManager(),
+		authManager:	auth.NewManager(),
+		log:			log,
 	}
 }
 
 func main(){
-	server := NewServer()
+	serverLogger, err := logger.NewLogger("server")
+	if err != nil {
+		serverLogger.Error("не удалось создать логгер: %v", err)
+	}
+	defer serverLogger.Close()
+
+	server := NewServer(serverLogger)
 	address := fmt.Sprintf("%s:%s", host, port)
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		log.Fatalf("не удалось запустить сервер: %v", err)
+		serverLogger.Error("не удалось запустить сервер: %v", err)
 	}
 	defer listener.Close()
 
-	log.Printf("сервер AuroraMsgr по адресу %s", address)
+	serverLogger.Info("сервер AuroraMsgr по адресу %s", address)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("не удалось принять соединение: %v", err)
+			serverLogger.Error("не удалось принять соединение: %v", err)
 			continue
 		}
 
-		log.Printf("новое соединение от %s", conn.RemoteAddr())
+		serverLogger.Info("новое соединение от %s", conn.RemoteAddr())
 		go server.handleConnection(conn)
 	}
 }
@@ -56,11 +64,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Первый пакет должен быть запросом на аутентификацию
 	username, err := s.authenticate(conn)
 	if err != nil {
-		log.Printf("аутентификация не удалась для %s: %v", conn.RemoteAddr(), err)
+		s.log.Error("аутентификация не удалась для %s: %v", conn.RemoteAddr(), err)
 		return
 	}
 
-	log.Printf("пользователь %s аутентифицирован", username)
+	s.log.Auth("пользователь аутентифицирован", username)
 	
 	protocol.Send(conn, protocol.Packet{
 		Type: protocol.PacketSuccess,
@@ -70,14 +78,14 @@ func (s *Server) handleConnection(conn net.Conn) {
 	for {
 		packet, err := protocol.Receive(conn)
 		if err != nil {
-			log.Printf("пользователь %s отключился: %v", username, err)
+			s.log.Auth(username, "отключился")
 			return
 		}
 
-		log.Printf("[%s -> %s]: %s", packet.From, packet.To, packet.Payload)
+		s.log.Msg(packet.From, packet.To, packet.Payload)
 
 		if err := protocol.Send(conn, packet); err != nil {
-			log.Printf("не удалось отправить пакет: %v", err)
+			s.log.Error("не удалось отправить пакет: %v", err)
 			return
 		}
 	}
@@ -100,6 +108,7 @@ func (s *Server) authenticate(conn net.Conn) (string, error) {
 				// Повторяем попытку
 				continue
 			}
+			s.log.Auth(packet.From, "зарегистрировался")
 			return packet.From, nil
 
 		case protocol.PacketLogin:
@@ -111,6 +120,7 @@ func (s *Server) authenticate(conn net.Conn) (string, error) {
 				// Повторяем попытку
 				continue
 			}
+			s.log.Auth(packet.From, "вошел в сеть")
 			return packet.From, nil
 
 		default:
