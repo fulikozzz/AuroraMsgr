@@ -6,6 +6,8 @@ import (
 	"log"	// логирование
 	"net"	// сетевые операции
 	"os"	// работа с оc
+	"strings" // работа со строками
+
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
 )
@@ -16,6 +18,7 @@ const (
 )
 
 func main(){
+	fmt.Printf("----- Aurora -----\n")
 	address := fmt.Sprintf("%s:%s", serverHost, serverPort)
 
 	conn, err := net.Dial("tcp", address)
@@ -28,9 +31,19 @@ func main(){
 
 	scanner := bufio.NewScanner(os.Stdin) 
 
-	fmt.Print("Введите ваше имя: ")
-	scanner.Scan()
-	name := scanner.Text()
+	var username string
+	for {
+		u, err := authenticate(conn, scanner)
+		if err != nil {
+			fmt.Printf("Ошибка входа: %v. Попробуйте снова.\n", err)
+			continue
+		}
+		username = u
+		break
+	}
+
+	fmt.Printf("Добро пожаловать, %s!\n", username)
+	fmt.Printf("Команды: /exit - выход\n")
 
 	// Запускаем горутину для получения сообщений от сервера
 	for {
@@ -51,7 +64,7 @@ func main(){
 
 		packet := protocol.Packet{
 			Type: protocol.PacketMessage,
-			From: name,
+			From: username,
 			To: "server",
 			Payload: text,
 		}
@@ -71,4 +84,68 @@ func main(){
 		fmt.Printf("[echo]: %s: %s\n", response.From, response.Payload)
 	}
 
+}
+
+// Функция для аутентификации пользователя
+func authenticate(conn net.Conn, scanner *bufio.Scanner) (string, error) {
+	var choice, username, password string
+
+	fmt.Println("1. Вход ")
+	fmt.Println("2. Регистрация ")
+	fmt.Println("Выберите действие: ")
+
+	scanner.Scan()
+	choice = strings.TrimSpace(scanner.Text())
+
+	for {
+		fmt.Print("Имя пользователя: ")
+		scanner.Scan()
+		username = strings.TrimSpace(scanner.Text())
+		if username != "" {
+			break
+		}
+		fmt.Println("Ошибка: имя пользователя не может быть пустым")
+	}
+
+	for {
+		fmt.Print("Пароль: ")
+		scanner.Scan()
+		password = strings.TrimSpace(scanner.Text())
+		if password != "" {
+			break
+		}
+		fmt.Println("Ошибка: пароль не может быть пустым")
+	}
+
+	var packetType string
+	switch choice {
+	case "1":
+		packetType = protocol.PacketLogin
+	case "2":
+		packetType = protocol.PacketRegister
+	default:
+		return "", fmt.Errorf("недопустимое значение: %s", choice)
+	}
+
+	// Отправляем пакет аутентификации на сервер
+	err := protocol.Send(conn, protocol.Packet{
+		Type:    packetType,
+		From:    username,
+		Payload: password,
+	})
+	if err != nil {
+		return "", fmt.Errorf("не удалось отправить пакет аутентификации: %w", err)
+	}
+
+	// Ждём ответа от сервера
+	response, err := protocol.Receive(conn)
+	if err != nil {
+		return "", fmt.Errorf("не удалось получить ответ от сервера: %w", err)
+	}
+
+	if response.Type == protocol.PacketError {
+		return "", fmt.Errorf(response.Payload)
+	}
+
+	return username, nil
 }

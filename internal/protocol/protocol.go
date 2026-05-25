@@ -8,8 +8,12 @@ import (
 
 // Типы пакетом
 const (
-	PacketMessage = "message"
-	PacketSystem  = "system"
+	PacketMessage = "message"	// обычное сообщение
+	PacketSystem  = "system"	// системное сообщение
+	PacketLogin    = "login"	// запрос на вход
+	PacketRegister = "register"	// запрос на регистрацию
+	PacketSuccess  = "success"	// успешный ответ
+	PacketError    = "error"	// ошибка
 
 )
 
