@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
 	"github.com/fulikozzz/AuroraMsgr/internal/auth"
@@ -94,11 +95,24 @@ func (s *Server) handleConnection(conn net.Conn) {
 		Payload: fmt.Sprintf("Добро пожаловать, %s!", username),
 	})
 
+	// Основной цикл обработки сообщений от клиента
 	for {
 		packet, err := protocol.Receive(conn)
 		if err != nil {
 			s.log.Auth(username, "отключился")
 			return
+		}
+
+		// Обработка команды /online
+		if packet.Payload == "/online" {
+			users := s.hub.GetOnlineUsers()
+			protocol.Send(conn, protocol.Packet{
+				Type: protocol.PacketSystem,
+				Payload: fmt.Sprintf("Пользователи онлайн: %s", strings.Join(users, ", ")),
+			})
+			
+			s.log.Info("пользователь %s запросил список онлайн пользователей", username)
+			continue
 		}
 
 		s.log.Msg(packet.From, packet.To, packet.Payload)

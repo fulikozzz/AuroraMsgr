@@ -62,3 +62,22 @@ func (h *Hub) Send(from, to, payload string) error {
 		Payload: payload,
 	})
 }
+
+func (h *Hub) IsOnline(username string) bool {
+    h.mu.RLock()
+    defer h.mu.RUnlock()
+
+    _, exists := h.clients[username]
+    return exists
+}
+
+func (h *Hub) GetOnlineUsers() []string {
+    h.mu.RLock()
+    defer h.mu.RUnlock()
+
+    users := make([]string, 0, len(h.clients))
+    for username := range h.clients {
+        users = append(users, username)
+    }
+    return users
+}

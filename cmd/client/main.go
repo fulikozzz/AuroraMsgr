@@ -45,7 +45,8 @@ func main(){
 	fmt.Printf("Добро пожаловать, %s!\n", username)
 	fmt.Println("Команды:")
 	fmt.Println("  @имя сообщение — отправить сообщение пользователю")
-	fmt.Println("  /exit          — выход")
+	fmt.Println("  /online		  - получить список активных пользователей")
+	fmt.Println("  /exit		  — выход")
 
 	// Горутина для получения сообщений от сервера
 	go func() {
@@ -82,10 +83,17 @@ func main(){
 			fmt.Println("отключение от сервера...")
 			break
 		}
-		
-		var packet protocol.Packet
 
-		if strings.HasPrefix(text, "@") {
+		var packet protocol.Packet
+		
+		if text == "/online" {
+			packet = protocol.Packet{
+				Type:    protocol.PacketMessage,
+				From:    username,
+				To:      "server",
+				Payload: "/online",
+			}
+		} else if strings.HasPrefix(text, "@") {
 			parts := strings.SplitN(text, " ", 2)
 			if len(parts) < 2 {
 				fmt.Println("Формат: @имя сообщение")
@@ -104,23 +112,12 @@ func main(){
 			continue
 		}
 
-
 		// Отправляем пакет на сервер
 		if err := protocol.Send(conn, packet); err != nil {
 			log.Printf("не удалось отправить сообщение: %v", err)
 			break
 		}
 	}
-		
-	// Ждем ответ
-	//	response, err := protocol.Receive(conn)
-	//	if err != nil {
-	//		log.Printf("не удалось получить ответ от сервера: %v", err)
-	//		break
-	//	}
-	//	fmt.Printf("[echo]: %s: %s\n", response.From, response.Payload)
-	//}
-
 }
 
 // Функция для аутентификации пользователя
