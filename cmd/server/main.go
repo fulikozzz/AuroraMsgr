@@ -8,6 +8,7 @@ import (
 	"github.com/fulikozzz/AuroraMsgr/internal/auth"
 	"github.com/fulikozzz/AuroraMsgr/internal/storage"
 	"github.com/fulikozzz/AuroraMsgr/internal/logger"
+	"github.com/fulikozzz/AuroraMsgr/internal/chat"
 )
 
 // Конфигурация сервера
@@ -19,6 +20,7 @@ const  (
 type Server struct {
 	authManager *auth.Manager
 	storage		*storage.Storage
+	hub			*chat.Hub
 	log			*logger.Logger
 }
 
@@ -26,6 +28,7 @@ func NewServer(storage *storage.Storage, log *logger.Logger) *Server {
 	return &Server{
 		authManager:	auth.NewManager(storage),
 		storage:		storage,
+		hub:			chat.NewHub(),
 		log:			log,
 	}
 }
@@ -80,6 +83,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	s.log.Auth("пользователь аутентифицирован", username)
 	
+	// Регаем клиента в Hub
+	s.hub.Register(username, conn)
+	defer s.hub.Unregister(username)
+
+	s.log.Info("пользователь %s онлайн", username)
+
 	protocol.Send(conn, protocol.Packet{
 		Type: protocol.PacketSuccess,
 		Payload: fmt.Sprintf("Добро пожаловать, %s!", username),
@@ -92,9 +101,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
+		s.log.Msg(packet.From, packet.To, packet.Payload)
 		s.storage.SaveMessage(packet.From, packet.To, packet.Payload)
 
-		if err := protocol.Send(conn, packet); err != nil {
+		if err := s.hub.Send(packet.From, packet.To, packet.Payload); err != nil {
 			s.log.Error("не удалось отправить пакет: %v", err)
 			return
 		}

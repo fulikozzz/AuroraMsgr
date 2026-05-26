@@ -43,7 +43,9 @@ func main(){
 	}
 
 	fmt.Printf("Добро пожаловать, %s!\n", username)
-	fmt.Printf("Команды: /exit - выход\n")
+	fmt.Println("Команды:")
+	fmt.Println("  @имя сообщение — отправить сообщение пользователю")
+	fmt.Printf("   /exit - выход\n")
 
 	// Запускаем горутину для получения сообщений от сервера
 	for {
@@ -61,13 +63,28 @@ func main(){
 			fmt.Println("отключение от сервера...")
 			break
 		}
+		
+		var packet protocol.Packet
 
-		packet := protocol.Packet{
-			Type: protocol.PacketMessage,
-			From: username,
-			To: "server",
-			Payload: text,
+		if strings.HasPrefix(text, "@") {
+			parts := strings.SplitN(text, " ", 2)
+			if len(parts) < 2 {
+				fmt.Println("Формат: @имя сообщение")
+				continue
+			}
+			to := strings.TrimPrefix(parts[0], "@")
+			
+			packet = protocol.Packet{
+			Type:    protocol.PacketMessage,
+			From:    username,
+			To:      to,
+			Payload: parts[1],
 		}
+		} else {
+		fmt.Println("Используйте @имя для отправки сообщения")
+		continue
+	}
+		
 
 		// Отправляем пакет на сервер
 		if err := protocol.Send(conn, packet); err != nil {
@@ -75,7 +92,7 @@ func main(){
 			break
 		}
 		
-		// Получаем ответ от сервера
+		// Ждем ответ
 		response, err := protocol.Receive(conn)
 		if err != nil {
 			log.Printf("не удалось получить ответ от сервера: %v", err)
