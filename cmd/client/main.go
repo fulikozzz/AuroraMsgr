@@ -45,9 +45,28 @@ func main(){
 	fmt.Printf("Добро пожаловать, %s!\n", username)
 	fmt.Println("Команды:")
 	fmt.Println("  @имя сообщение — отправить сообщение пользователю")
-	fmt.Printf("   /exit - выход\n")
+	fmt.Println("  /exit          — выход")
 
-	// Запускаем горутину для получения сообщений от сервера
+	// Горутина для получения сообщений от сервера
+	go func() {
+		for {
+			packet, err := protocol.Receive(conn)
+			if err != nil {
+				fmt.Println("\nсоединение с сервером потеряно")
+				os.Exit(0)
+			}
+			switch packet.Type {
+			case protocol.PacketMessage:
+				fmt.Printf("\n[%s]: %s\n> ", packet.From, packet.Payload)
+			case protocol.PacketSystem:
+				fmt.Printf("\n%s\n> ", packet.Payload)
+			case protocol.PacketError:
+				fmt.Printf("\nОшибка: %s\n> ", packet.Payload)
+			}
+		}
+	}()
+
+	// Цикл отправки сообщений
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
@@ -73,33 +92,34 @@ func main(){
 				continue
 			}
 			to := strings.TrimPrefix(parts[0], "@")
-			
+
 			packet = protocol.Packet{
-			Type:    protocol.PacketMessage,
-			From:    username,
-			To:      to,
-			Payload: parts[1],
-		}
+				Type:    protocol.PacketMessage,
+				From:    username,
+				To:      to,
+				Payload: parts[1],
+			}
 		} else {
-		fmt.Println("Используйте @имя для отправки сообщения")
-		continue
-	}
-		
+			fmt.Println("Используйте @имя для отправки сообщения")
+			continue
+		}
+
 
 		// Отправляем пакет на сервер
 		if err := protocol.Send(conn, packet); err != nil {
 			log.Printf("не удалось отправить сообщение: %v", err)
 			break
 		}
-		
-		// Ждем ответ
-		response, err := protocol.Receive(conn)
-		if err != nil {
-			log.Printf("не удалось получить ответ от сервера: %v", err)
-			break
-		}
-		fmt.Printf("[echo]: %s: %s\n", response.From, response.Payload)
 	}
+		
+	// Ждем ответ
+	//	response, err := protocol.Receive(conn)
+	//	if err != nil {
+	//		log.Printf("не удалось получить ответ от сервера: %v", err)
+	//		break
+	//	}
+	//	fmt.Printf("[echo]: %s: %s\n", response.From, response.Payload)
+	//}
 
 }
 
