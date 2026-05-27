@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"strings"
@@ -13,10 +14,10 @@ import (
 )
 
 // Конфигурация сервера
-const  (
+/*const  (
 	host = "0.0.0.0"
 	port = "8080"
-)
+)*/
 
 type Server struct {
 	authManager *auth.Manager
@@ -35,7 +36,14 @@ func NewServer(storage *storage.Storage, log *logger.Logger) *Server {
 }
 
 func main(){
-	serverLogger, err := logger.NewLogger("server")
+	// Флаги для host, port, уровня логов
+	host := flag.String("host", "0.0.0.0", "IP адрес для запуска сервера")
+	port := flag.String("port", "8080", "Порт для запуска сервера")
+	logLevel := flag.String("log-level", "info", "Уровень логирования (debug, info, warn, error)")
+
+	flag.Parse()
+
+	serverLogger, err := logger.NewLogger("server", *logLevel)
 	if err != nil {
 		serverLogger.Error("не удалось создать логгер: %v", err)
 	}
@@ -49,11 +57,12 @@ func main(){
 	defer database.Close()
 
 	server := NewServer( database, serverLogger)
-	address := fmt.Sprintf("%s:%s", host, port)
+	address := net.JoinHostPort(*host, *port)
 
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		serverLogger.Error("не удалось запустить сервер: %v", err)
+		return // Это потому что при ошибке дальше крутить цикл безсмысленно
 	}
 	defer listener.Close()
 
@@ -111,7 +120,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				Payload: fmt.Sprintf("Пользователи онлайн: %s", strings.Join(users, ", ")),
 			})
 			
-			s.log.Info("пользователь %s запросил список онлайн пользователей", username)
+			s.log.Debug("пользователь %s запросил список онлайн пользователей", username)
 			continue
 		}
 		

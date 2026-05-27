@@ -33,3 +33,5 @@ go.work.sum
 /.vs
 /logs
 /aurora.db
+/aurora-client
+/aurora-server

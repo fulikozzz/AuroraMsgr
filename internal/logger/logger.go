@@ -6,14 +6,39 @@ import (
     "log"
     "os"
     "time"
+    "strings"
+)
+
+const (
+	LevelDebug = iota // 0
+	LevelInfo         // 1
+	LevelWarn         // 2
+	LevelError        // 3
 )
 
 type Logger struct {
     file *os.File      
     logger *log.Logger 
+    logLevel int
 }
 
-func NewLogger(filename string) (*Logger, error) {
+func NewLogger(filename string, levelStr string) (*Logger, error) {
+
+    var lvl int
+	switch strings.ToLower(strings.TrimSpace(levelStr)) {
+	case "debug":
+		lvl = LevelDebug
+	case "info":
+		lvl = LevelInfo
+	case "warn":
+		lvl = LevelWarn
+	case "error":
+		lvl = LevelError
+	default:
+		// Info по умолчанию
+		lvl = LevelInfo
+	}
+
     
     // Создаем директорию для логов, если она не существует
     // 0755 - права доступа к директории (чтение и выполнение для всех, запись для владельца)
@@ -36,18 +61,35 @@ func NewLogger(filename string) (*Logger, error) {
     return &Logger{
         file: file,
         logger: log.New(multiWriter, "", log.LstdFlags), 
+        logLevel: lvl,
     }, nil
+}
+func (l *Logger) isLogging(msgLevel int) bool {
+	return msgLevel >= l.logLevel
 }
 
 func (l *Logger) Close() {
     l.file.Close()
 }
 
+func (l *Logger) Debug(format string, v ...interface{}) {
+    if !l.isLogging(LevelDebug) {
+		return
+	}
+    l.logger.Printf("[Debug] " + format, v...)
+}
+
 func (l *Logger) Info(format string, v ...interface{}) {
+    if !l.isLogging(LevelInfo) {
+		return
+	}
     l.logger.Printf("[INFO] " + format, v...)
 }
 
 func (l *Logger) Error(format string, v ...interface{}) {
+    if !l.isLogging(LevelError) {
+		return
+	}
     l.logger.Printf("[ERROR] " + format, v...)
 }
 
