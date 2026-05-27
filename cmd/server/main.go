@@ -6,6 +6,7 @@ import (
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
 	"github.com/fulikozzz/AuroraMsgr/internal/auth"
+	"github.com/fulikozzz/AuroraMsgr/internal/storage"
 	"github.com/fulikozzz/AuroraMsgr/internal/logger"
 )
 
@@ -17,12 +18,14 @@ const  (
 
 type Server struct {
 	authManager *auth.Manager
+	storage		*storage.Storage
 	log			*logger.Logger
 }
 
-func NewServer(log *logger.Logger) *Server {
+func NewServer(storage *storage.Storage, log *logger.Logger) *Server {
 	return &Server{
-		authManager:	auth.NewManager(),
+		authManager:	auth.NewManager(storage),
+		storage:		storage,
 		log:			log,
 	}
 }
@@ -34,7 +37,14 @@ func main(){
 	}
 	defer serverLogger.Close()
 
-	server := NewServer(serverLogger)
+	database, err := storage.NewStorage("aurora.db")
+	if err != nil {
+		serverLogger.Error("не удалось открыть БД: %v", err)
+		return
+	}
+	defer database.Close()
+
+	server := NewServer( database, serverLogger)
 	address := fmt.Sprintf("%s:%s", host, port)
 
 	listener, err := net.Listen("tcp", address)
@@ -82,7 +92,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		s.log.Msg(packet.From, packet.To, packet.Payload)
+		s.storage.SaveMessage(packet.From, packet.To, packet.Payload)
 
 		if err := protocol.Send(conn, packet); err != nil {
 			s.log.Error("не удалось отправить пакет: %v", err)
