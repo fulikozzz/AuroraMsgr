@@ -114,13 +114,52 @@ func (s *Server) handleConnection(conn net.Conn) {
 			s.log.Info("пользователь %s запросил список онлайн пользователей", username)
 			continue
 		}
+		
+		// Обработка запроса истории
+		if packet.Type == protocol.PacketHistoryRequest {
+			history, err := s.storage.GetHistory(username, packet.Payload)
+			if err != nil {
+				protocol.Send(conn, protocol.Packet{
+					Type:    protocol.PacketError,
+					Payload: fmt.Sprintf("ошибка получения истории: %v", err),
+				})
+				continue
+			}
+			protocol.Send(conn, protocol.Packet{
+				Type:    protocol.PacketHistory,
+				From:    username,
+				To:      packet.Payload,
+				Payload: strings.Join(history, "\n"),
+			})
+			continue
+		}
+
+		// Обработка запроса диалогов
+		if packet.Type == protocol.PacketDialogsRequest {
+			dialogs, err := s.storage.GetDialogs(username)
+			if err != nil {
+				protocol.Send(conn, protocol.Packet{
+					Type:    protocol.PacketError,
+					Payload: fmt.Sprintf("ошибка получения диалогов: %v", err),
+				})
+				continue
+			}
+			protocol.Send(conn, protocol.Packet{
+				Type:    protocol.PacketDialogs,
+				Payload: strings.Join(dialogs, ","),
+			})
+			continue
+		}
 
 		s.log.Msg(packet.From, packet.To, packet.Payload)
 		s.storage.SaveMessage(packet.From, packet.To, packet.Payload)
 
 		if err := s.hub.Send(packet.From, packet.To, packet.Payload); err != nil {
-			s.log.Error("не удалось отправить пакет: %v", err)
-			return
+			// Получатель офлайн — сообщаем отправителю, но не рвём соединение
+			protocol.Send(conn, protocol.Packet{
+				Type:    protocol.PacketError,
+				Payload: err.Error(),
+			})
 		}
 	}
 }

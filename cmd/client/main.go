@@ -49,7 +49,7 @@ func main(){
 	runInterface(conn, username)
 }
 
-func runInterface(conn net.Conn, username  string){
+func runInterface(conn net.Conn, username string) {
 	app := tview.NewApplication()
 
 	// Область сообщений
@@ -67,61 +67,89 @@ func runInterface(conn net.Conn, username  string){
 		SetFieldBackgroundColor(0)
 	input.SetBorder(true)
 
-	// Подсказки
-	hints := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(true).
-		SetChangedFunc(func() {
-			app.Draw()
-		})
-	hints.SetBorder(true).SetTitle(" Подсказки ")
-	hintsText := `[yellow]Команды:[-]
-[@имя сообщение] — отправить личное сообщение
-/online — показать онлайн пользователей
-/exit — выйти из приложения
-[green]Навигация:[-]
-[F1] — Онлайн
-[Ctrl+C] — Выход
+	// Список диалогов
+	dialogList := tview.NewList()
+	dialogList.SetBorder(true)
+	dialogList.SetTitle(" Диалоги ")
 
-[white]Пример:[-] @ivan Привет!`
-	hints.SetText(hintsText)
-	hints.SetTextAlign(tview.AlignLeft)
-
-	// Список онлайн пользователей (можно выбрать, чтобы подставить в поле ввода)
+	// Список онлайн пользователей
 	onlineList := tview.NewList()
 	onlineList.SetBorder(true)
 	onlineList.SetTitle(" Онлайн ")
 
-	onlineList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-    input.SetText("@" + strings.TrimSpace(mainText) + " ")
-    app.SetFocus(input)
+	// Текущий собеседник
+	currentChat := ""
+
+	// Загрузка истории диалога
+	loadHistory := func(partner string) {
+		currentChat = partner
+		messages.Clear()
+		messages.SetTitle(fmt.Sprintf(" Диалог с %s ", partner))
+		protocol.Send(conn, protocol.Packet{
+			Type:    protocol.PacketHistoryRequest,
+			From:    username,
+			Payload: partner,
+		})
+		input.SetText("@" + partner + " ")
+		app.SetFocus(input)
+	}
+
+	// Выбор диалога
+	dialogList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		loadHistory(strings.TrimSpace(mainText))
 	})
 
-	// Правый столбец: подсказки сверху, список онлайн снизу
+	// Выбор из онлайн списка
+	onlineList.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		loadHistory(strings.TrimSpace(mainText))
+	})
+
+	// Подсказки
+	hints := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true)
+	hints.SetBorder(true).SetTitle(" Подсказки ")
+	hints.SetText(`[yellow]Команды:[-]
+@имя сообщение — написать
+/online — обновить онлайн
+/exit   — выход
+[green]Клавиши:[-]
+F1 — фокус онлайн
+F2 — фокус диалоги
+Tab — поле ввода`)
+
+	// Правый столбец
 	rightFlex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(hints, 0, 1, false).
-		AddItem(onlineList, 0, 2, false)
+		AddItem(dialogList, 0, 1, false).
+		AddItem(onlineList, 0, 1, false).
+		AddItem(hints, 10, 0, false)
 
-	// Горизонтальный контейнер: слева — сообщения, справа — подсказки/онлайн
+	// Основной layout
 	contentFlex := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(messages, 0, 1, false).  // растягиваемая область сообщений
-		AddItem(rightFlex, 35, 0, false)    // фиксированная ширина правой колонки
+		AddItem(messages, 0, 1, false).
+		AddItem(rightFlex, 30, 0, false)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(contentFlex, 0, 1, false).
 		AddItem(input, 3, 0, true)
 
-	// Запрашиваем список онлайн сразу при входе
+	// Запрашиваем диалоги и онлайн при входе
+	protocol.Send(conn, protocol.Packet{
+		Type:    protocol.PacketDialogsRequest,
+		From:    username,
+		Payload: username,
+	})
 	protocol.Send(conn, protocol.Packet{
 		Type:    protocol.PacketMessage,
 		From:    username,
 		To:      "server",
 		Payload: "/online",
 	})
-	
+
+	// Автообновление онлайн каждые 10 секунд
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -135,44 +163,69 @@ func runInterface(conn net.Conn, username  string){
 		}
 	}()
 
-	// Горутина для получения сообщений от сервера
+	// Горутина получения сообщений
 	go func() {
 		for {
 			packet, err := protocol.Receive(conn)
 			if err != nil {
-				fmt.Println("\nсоединение с сервером потеряно")
-				os.Exit(0)
+				fmt.Fprintf(messages, "[red]соединение потеряно[-]\n")
+				app.Draw()
+				return
 			}
+
 			switch packet.Type {
 			case protocol.PacketMessage:
-				// Добавляем отметку времени
 				ts := time.Now().Format("15:04")
 				fmt.Fprintf(messages, "[gray]%s[-] [green]%s[-]: %s\n", ts, packet.From, packet.Payload)
 				messages.ScrollToEnd()
+
+				// Обновляем диалоги при новом сообщении
+				protocol.Send(conn, protocol.Packet{
+					Type:    protocol.PacketDialogsRequest,
+					From:    username,
+					Payload: username,
+				})
+
+			case protocol.PacketHistory:
+				messages.Clear()
+				if packet.Payload != "" {
+					fmt.Fprintf(messages, "%s\n", packet.Payload)
+				} else {
+					fmt.Fprintf(messages, "[gray]История пуста[-]\n")
+				}
+				messages.ScrollToEnd()
+
+			case protocol.PacketDialogs:
+				dialogList.Clear()
+				if packet.Payload != "" {
+					for _, d := range strings.Split(packet.Payload, ",") {
+						d = strings.TrimSpace(d)
+						if d != "" {
+							dialogList.AddItem(d, "", 0, nil)
+						}
+					}
+				}
+				app.Draw()
+
 			case protocol.PacketSystem:
-				// Обновление списка онлайн при получении соответствующего системного сообщения
 				const prefix = "Пользователи онлайн:"
 				if strings.HasPrefix(packet.Payload, prefix) {
 					list := strings.TrimSpace(strings.TrimPrefix(packet.Payload, prefix))
 					onlineList.Clear()
 					if list != "" {
-						users := strings.Split(list, ",")
-						for _, u := range users {
+						for _, u := range strings.Split(list, ",") {
 							u = strings.TrimSpace(u)
-							if u == "" {
-								continue
+							if u != "" {
+								onlineList.AddItem(u, "", 0, nil)
 							}
-							onlineList.AddItem(u, "", 0, nil)
 						}
 					}
-					// Также показываем краткое системное сообщение в чат
-					fmt.Fprintf(messages, "[yellow]%s[-]\n", packet.Payload)
-					messages.ScrollToEnd()
 					app.Draw()
 					continue
 				}
 				fmt.Fprintf(messages, "[yellow]%s[-]\n", packet.Payload)
 				messages.ScrollToEnd()
+
 			case protocol.PacketError:
 				fmt.Fprintf(messages, "[red]Ошибка: %s[-]\n", packet.Payload)
 				messages.ScrollToEnd()
@@ -180,13 +233,19 @@ func runInterface(conn net.Conn, username  string){
 		}
 	}()
 
-	// Цикл отправки сообщений
-	input.SetDoneFunc(func(key tcell.Key) { // обработка нажатия Enter
-		text := strings.TrimSpace(input.GetText()) // получаем текст из поля ввода и удаляем лишние пробелы
+	// Обработка ввода
+	input.SetDoneFunc(func(key tcell.Key) {
+		text := strings.TrimSpace(input.GetText())
 		if text == "" {
 			return
 		}
 		input.SetText("")
+
+		defer func() {
+			if currentChat != "" {
+				input.SetText("@" + currentChat + " ")
+			}
+		}()
 
 		if text == "/exit" {
 			app.Stop()
@@ -216,10 +275,15 @@ func runInterface(conn net.Conn, username  string){
 				To:      to,
 				Payload: parts[1],
 			}
-			// Показываем своё сообщение сразу с отметкой времени
 			ts := time.Now().Format("15:04")
 			fmt.Fprintf(messages, "[gray]%s[-] [blue]%s[-]: %s\n", ts, username, parts[1])
 			messages.ScrollToEnd()
+
+			// Если открыт диалог — обновляем имя получателя
+			if currentChat == "" {
+				currentChat = to
+				messages.SetTitle(fmt.Sprintf(" Диалог с %s ", to))
+			}
 		} else {
 			fmt.Fprintf(messages, "[red]Используйте @имя для отправки[-]\n")
 			messages.ScrollToEnd()
@@ -232,35 +296,34 @@ func runInterface(conn net.Conn, username  string){
 		}
 	})
 
-	// Горячие клавиши: F1 — запрос онлайн и фокус на списке; Tab — переключение фокуса
+	// Горячие клавиши
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyF1:
-			// Запрашиваем online и переключаем фокус на список
-			protocol.Send(conn, protocol.Packet{
-				Type:    protocol.PacketMessage,
-				From:    username,
-				To:      "server",
-				Payload: "/online",
-			})
 			app.SetFocus(onlineList)
 			return nil
+		case tcell.KeyF2:
+			app.SetFocus(dialogList)
+			return nil
 		case tcell.KeyTAB:
-			// Переключение между полем ввода и списком онлайн
-			if app.GetFocus() == input {
-				app.SetFocus(onlineList)
-			} else {
-				app.SetFocus(input)
-			}
+			app.SetFocus(input)
 			return nil
 		case tcell.KeyCtrlC:
 			app.Stop()
+			return nil
+		case tcell.KeyPgUp:
+			row, _ := messages.GetScrollOffset()
+			messages.ScrollTo(row-5, 0)
+			return nil
+		case tcell.KeyPgDn:
+			row, _ := messages.GetScrollOffset()
+			messages.ScrollTo(row+5, 0)
 			return nil
 		}
 		return event
 	})
 
-	if err := app.SetRoot(layout, true).SetFocus(input).Run(); err != nil { 
+	if err := app.SetRoot(layout, true).SetFocus(input).Run(); err != nil {
 		log.Fatalf("ошибка TUI: %v", err)
 	}
 }

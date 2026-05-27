@@ -14,6 +14,10 @@ const (
 	PacketRegister = "register"	// запрос на регистрацию
 	PacketSuccess  = "success"	// успешный ответ
 	PacketError    = "error"	// ошибка
+	PacketHistory	= "history"	// история сообщений
+	PacketHistoryRequest = "history_request" // запрос на историю сообщений
+	PacketDialogs	= "dialogs"	// список диалогов
+	PacketDialogsRequest = "dialogs_request" // запрос на список диалогов
 
 )
 
