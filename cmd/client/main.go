@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"bufio" // буфферизированный ввод-вывод
 	"fmt"   // форматированный вывод
 	"log"   // логирование
@@ -16,14 +17,18 @@ import (
 
 )
 
-const (
+/*const (
 		serverHost = "127.0.0.1"
 		serverPort = "8080"
-)
+)*/
 
 func main(){
 	fmt.Printf("----- Aurora -----\n")
-	address := fmt.Sprintf("%s:%s", serverHost, serverPort)
+	serverHost := flag.String("host", "127.0.0.1", "IP адрес сервера")
+	serverPort := flag.String("port", "8080", "Порт сервера")
+
+	flag.Parse()
+	address := net.JoinHostPort(*serverHost, *serverPort)
 
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
