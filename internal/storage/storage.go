@@ -45,7 +45,7 @@ func (s *Storage) migrate() error {
 	);`
 
 	// выполняем SQL запрос для создания таблиц
-	_, err := s.db.Exec(query) 
+	_, err := s.db.Exec(query)
 	return err
 }
 
@@ -108,11 +108,39 @@ func (s *Storage) GetHistory(user1, user2 string) ([]string, error) {
 
 	var result []string
 	for rows.Next() {
-		var from, to, payload, createdAt string
+		var from, to, payload string
+		var createdAt int64
 		if err := rows.Scan(&from, &to, &payload, &createdAt); err != nil {
 			return nil, err
 		}
-		result = append(result, fmt.Sprintf("[%s] %s -> %s: %s", createdAt, from, to, payload))
+		// Форматируем время из timestamp
+		t := time.Unix(createdAt, 0).Format("15:04 02.01")
+		result = append(result, fmt.Sprintf("[%s] %s -> %s: %s", t, from, to, payload))
 	}
 	return result, nil
+}
+
+// Возвращает пользователей с которыми была переписка
+func (s *Storage) GetDialogs(username string) ([]string, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT
+			CASE WHEN from_user = ? THEN to_user ELSE from_user END as partner
+		FROM messages
+		WHERE from_user = ? OR to_user = ?`,
+		username, username, username,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения диалогов: %w", err)
+	}
+	defer rows.Close()
+
+	var dialogs []string
+	for rows.Next() {
+		var partner string
+		if err := rows.Scan(&partner); err != nil {
+			return nil, err
+		}
+		dialogs = append(dialogs, partner)
+	}
+	return dialogs, nil
 }
