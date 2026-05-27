@@ -43,9 +43,31 @@ func main(){
 	}
 
 	fmt.Printf("Добро пожаловать, %s!\n", username)
-	fmt.Printf("Команды: /exit - выход\n")
+	fmt.Println("Команды:")
+	fmt.Println("  @имя сообщение — отправить сообщение пользователю")
+	fmt.Println("  /online		  - получить список активных пользователей")
+	fmt.Println("  /exit		  — выход")
 
-	// Запускаем горутину для получения сообщений от сервера
+	// Горутина для получения сообщений от сервера
+	go func() {
+		for {
+			packet, err := protocol.Receive(conn)
+			if err != nil {
+				fmt.Println("\nсоединение с сервером потеряно")
+				os.Exit(0)
+			}
+			switch packet.Type {
+			case protocol.PacketMessage:
+				fmt.Printf("\n[%s]: %s\n> ", packet.From, packet.Payload)
+			case protocol.PacketSystem:
+				fmt.Printf("\n%s\n> ", packet.Payload)
+			case protocol.PacketError:
+				fmt.Printf("\nОшибка: %s\n> ", packet.Payload)
+			}
+		}
+	}()
+
+	// Цикл отправки сообщений
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
@@ -62,11 +84,32 @@ func main(){
 			break
 		}
 
-		packet := protocol.Packet{
-			Type: protocol.PacketMessage,
-			From: username,
-			To: "server",
-			Payload: text,
+		var packet protocol.Packet
+		
+		if text == "/online" {
+			packet = protocol.Packet{
+				Type:    protocol.PacketMessage,
+				From:    username,
+				To:      "server",
+				Payload: "/online",
+			}
+		} else if strings.HasPrefix(text, "@") {
+			parts := strings.SplitN(text, " ", 2)
+			if len(parts) < 2 {
+				fmt.Println("Формат: @имя сообщение")
+				continue
+			}
+			to := strings.TrimPrefix(parts[0], "@")
+
+			packet = protocol.Packet{
+				Type:    protocol.PacketMessage,
+				From:    username,
+				To:      to,
+				Payload: parts[1],
+			}
+		} else {
+			fmt.Println("Используйте @имя для отправки сообщения")
+			continue
 		}
 
 		// Отправляем пакет на сервер
@@ -74,16 +117,7 @@ func main(){
 			log.Printf("не удалось отправить сообщение: %v", err)
 			break
 		}
-		
-		// Получаем ответ от сервера
-		response, err := protocol.Receive(conn)
-		if err != nil {
-			log.Printf("не удалось получить ответ от сервера: %v", err)
-			break
-		}
-		fmt.Printf("[echo]: %s: %s\n", response.From, response.Payload)
 	}
-
 }
 
 // Функция для аутентификации пользователя
