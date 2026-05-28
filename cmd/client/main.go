@@ -116,8 +116,8 @@ func runInterface(conn net.Conn, username string) {
 /online — обновить онлайн
 /exit   — выход
 [green]Клавиши:[-]
-F1 — фокус онлайн
-F2 — фокус диалоги
+F1 — фокус диалоги
+F2 — фокус онлайн
 Tab — поле ввода`)
 
 	// Правый столбец
@@ -178,9 +178,15 @@ Tab — поле ввода`)
 			switch packet.Type {
 			case protocol.PacketMessage:
 				ts := time.Now().Format("15:04")
-				fmt.Fprintf(messages, "[gray]%s[-] [green]%s[-]: %s\n", ts, packet.From, packet.Payload)
-				messages.ScrollToEnd()
-
+				// Если сообщение относится к открытому диалогу — отображаем его, иначе показываем уведомление
+				if currentChat == packet.From || currentChat == packet.To {
+					fmt.Fprintf(messages, "[gray]%s[-] [green]%s[-]: %s\n", ts, packet.From, packet.Payload)
+					messages.ScrollToEnd()
+				} else {
+					// Уведомление о новом сообщении в другом диалоге
+					fmt.Fprintf(messages, "[yellow]● новое сообщение от %s[-]\n", packet.From)
+					messages.ScrollToEnd()
+				}
 				// Обновляем диалоги при новом сообщении
 				protocol.Send(conn, protocol.Packet{
 					Type:    protocol.PacketDialogsRequest,
@@ -302,10 +308,10 @@ Tab — поле ввода`)
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyF1:
-			app.SetFocus(onlineList)
+			app.SetFocus(dialogList)
 			return nil
 		case tcell.KeyF2:
-			app.SetFocus(dialogList)
+			app.SetFocus(onlineList)
 			return nil
 		case tcell.KeyTAB:
 			app.SetFocus(input)
@@ -321,7 +327,10 @@ Tab — поле ввода`)
 			row, _ := messages.GetScrollOffset()
 			messages.ScrollTo(row+5, 0)
 			return nil
+		case tcell.KeyEsc:
+			app.
 		}
+
 		return event
 	})
 
