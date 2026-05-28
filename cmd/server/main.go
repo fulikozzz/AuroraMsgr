@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"flag"
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
 	"github.com/fulikozzz/AuroraMsgr/internal/auth"
@@ -13,9 +14,10 @@ import (
 )
 
 // Конфигурация сервера
-const  (
-	host = "0.0.0.0"
-	port = "8080"
+var (
+	listenAddr = flag.String("addr", "0.0.0.0:8080", "адрес для прослушивания (host:port)")
+	dbPath     = flag.String("db", "aurora.db", "путь к файлу базы данных")
+	logsDir    = flag.String("logs", "logs", "папка для логов")
 )
 
 type Server struct {
@@ -35,13 +37,15 @@ func NewServer(storage *storage.Storage, log *logger.Logger) *Server {
 }
 
 func main(){
+	flag.Parse()
+
 	serverLogger, err := logger.NewLogger("server")
 	if err != nil {
 		serverLogger.Error("не удалось создать логгер: %v", err)
 	}
 	defer serverLogger.Close()
 
-	database, err := storage.NewStorage("aurora.db")
+	database, err := storage.NewStorage(*dbPath)
 	if err != nil {
 		serverLogger.Error("не удалось открыть БД: %v", err)
 		return
@@ -49,15 +53,14 @@ func main(){
 	defer database.Close()
 
 	server := NewServer( database, serverLogger)
-	address := fmt.Sprintf("%s:%s", host, port)
 
-	listener, err := net.Listen("tcp", address)
+	listener, err := net.Listen("tcp", *listenAddr)
 	if err != nil {
 		serverLogger.Error("не удалось запустить сервер: %v", err)
 	}
 	defer listener.Close()
 
-	serverLogger.Info("сервер AuroraMsgr по адресу %s", address)
+	serverLogger.Info("сервер AuroraMsgr по адресу %s", *listenAddr)
 
 	for {
 		conn, err := listener.Accept()

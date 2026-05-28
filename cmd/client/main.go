@@ -7,7 +7,8 @@ import (
 	"net"   // сетевые операции
 	"os"    // работа с оc
 	"strings" // работа со строками
-	"time"
+	"time"	// работа со временем
+	"flag"	// парсинг флагов командной строки
 
 
 	"github.com/fulikozzz/AuroraMsgr/internal/protocol"
@@ -16,22 +17,23 @@ import (
 
 )
 
-const (
-		serverHost = "127.0.0.1"
-		serverPort = "8080"
+var (
+	serverAddr = flag.String("server", "127.0.0.1:8080", "адрес сервера в формате host:port")
 )
 
 func main(){
-	fmt.Printf("----- Aurora -----\n")
-	address := fmt.Sprintf("%s:%s", serverHost, serverPort)
+	flag.Parse()
 
-	conn, err := net.Dial("tcp", address)
+	fmt.Printf("----- Aurora -----\n")
+	fmt.Printf("подключение к %s...\n", *serverAddr)
+
+	conn, err := net.Dial("tcp", *serverAddr)
 	if err != nil {
 		log.Fatalf("не удалось подключиться к серверу: %v", err)
 	}
 	defer conn.Close() // закрываем соединение при завершении рабоы
 
-	log.Printf("подключено к серверу по адресу %s", address)
+	log.Printf("подключено к серверу по адресу %s", *serverAddr)
 
 	scanner := bufio.NewScanner(os.Stdin) 
 

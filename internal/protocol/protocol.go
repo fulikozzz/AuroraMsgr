@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -43,13 +45,14 @@ func Send(conn net.Conn, packet Packet) error {
 
 // Функция получения пакета
 func Receive(conn net.Conn) (Packet, error) {
-	buffer := make([]byte, 4096)
-	n, err := conn.Read(buffer)
+	reader := bufio.NewReader(conn)
+	data, err := reader.ReadBytes('\n')
 	if err != nil {
 		return Packet{}, fmt.Errorf("чтение пакета: %w", err)
 	}
+	data = bytes.TrimSpace(data)
 	var p Packet
-	if err := json.Unmarshal(buffer[:n], &p); err != nil {
+	if err := json.Unmarshal(data, &p); err != nil {
 		return Packet{}, fmt.Errorf("не удалось разобрать пакет: %w", err)
 	}
 	return p, nil
