@@ -5,6 +5,7 @@ import (
 	"fmt"   // форматированный вывод
 	"log"   // логирование
 	"net"   // сетевые операции
+	"crypto/tls"  // поддержка TLS
 	"os"    // работа с оc
 	"strings" // работа со строками
 	"time"	// работа со временем
@@ -19,6 +20,7 @@ import (
 
 var (
 	serverAddr = flag.String("server", "127.0.0.1:8080", "адрес сервера в формате host:port")
+	tlsEnabled = flag.Bool("tls", true, "включить TLS")
 )
 
 func main(){
@@ -27,11 +29,25 @@ func main(){
 	fmt.Printf("----- Aurora -----\n")
 	fmt.Printf("подключение к %s...\n", *serverAddr)
 
-	conn, err := net.Dial("tcp", *serverAddr)
-	if err != nil {
-		log.Fatalf("не удалось подключиться к серверу: %v", err)
+	var conn net.Conn 
+	var err error
+
+	if *tlsEnabled {
+		tlsConfig := &tls.Config{ 
+			InsecureSkipVerify: true, 
+			MinVersion:         tls.VersionTLS13,
+		}
+		conn, err = tls.Dial("tcp", *serverAddr, tlsConfig)
+		if err != nil {
+			log.Fatalf("не удалось подключиться по TLS: %v", err)
+		}
+	} else {
+		conn, err = net.Dial("tcp", *serverAddr)
+		if err != nil {
+			log.Fatalf("не удалось подключиться к серверу: %v", err)
+		}
 	}
-	defer conn.Close() // закрываем соединение при завершении рабоы
+
 
 	log.Printf("подключено к серверу по адресу %s", *serverAddr)
 
@@ -113,11 +129,11 @@ func runInterface(conn net.Conn, username string) {
 	hints.SetBorder(true).SetTitle(" Подсказки ")
 	hints.SetText(`[yellow]Команды:[-]
 @имя сообщение — написать
-/online — обновить онлайн
 /exit   — выход
 [green]Клавиши:[-]
 F1 — фокус диалоги
 F2 — фокус онлайн
+Ctrl+C — выход
 Tab — поле ввода`)
 
 	// Правый столбец
@@ -327,8 +343,6 @@ Tab — поле ввода`)
 			row, _ := messages.GetScrollOffset()
 			messages.ScrollTo(row+5, 0)
 			return nil
-		case tcell.KeyEsc:
-			app.
 		}
 
 		return event

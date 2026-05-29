@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"crypto/tls"
 	"strings"
 	"flag"
 
@@ -15,9 +16,11 @@ import (
 
 // Конфигурация сервера
 var (
-	listenAddr = flag.String("addr", "0.0.0.0:8080", "адрес для прослушивания (host:port)")
-	dbPath     = flag.String("db", "aurora.db", "путь к файлу базы данных")
-	logsDir    = flag.String("logs", "logs", "папка для логов")
+    listenAddr = flag.String("addr", "0.0.0.0:8080", "адрес для прослушивания")
+    dbPath     = flag.String("db", "aurora.db", "путь к БД")
+    certFile   = flag.String("cert", "configs/cert.pem", "путь к сертификату")
+    keyFile    = flag.String("key", "configs/key.pem", "путь к ключу")
+    tlsEnabled = flag.Bool("tls", true, "включить TLS")
 )
 
 type Server struct {
@@ -54,9 +57,31 @@ func main(){
 
 	server := NewServer( database, serverLogger)
 
-	listener, err := net.Listen("tcp", *listenAddr)
-	if err != nil {
-		serverLogger.Error("не удалось запустить сервер: %v", err)
+	var listener net.Listener
+
+	if *tlsEnabled {
+		cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
+		if err != nil {
+			serverLogger.Error("не удалось загрузить сертификат: %v", err)
+			return
+		}
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+		listener, err = tls.Listen("tcp", *listenAddr, tlsConfig)
+		if err != nil {
+			serverLogger.Error("не удалось запустить TLS сервер: %v", err)
+			return
+		}
+		serverLogger.Info("TLS включён")
+	} else {
+		listener, err = net.Listen("tcp", *listenAddr)
+		if err != nil {
+			serverLogger.Error("не удалось запустить сервер: %v", err)
+			return
+		}
+		serverLogger.Info("TLS выключен — небезопасный режим")
 	}
 	defer listener.Close()
 
@@ -114,7 +139,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				Payload: fmt.Sprintf("Пользователи онлайн: %s", strings.Join(users, ", ")),
 			})
 			
-			s.log.Info("пользователь %s запросил список онлайн пользователей", username)
+			//s.log.Info("пользователь %s запросил список онлайн пользователей", username)
 			continue
 		}
 		
